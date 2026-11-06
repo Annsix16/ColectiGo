@@ -16,7 +16,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +46,6 @@ sealed interface Session {
     data object None : Session
     data object Pasajero : Session
     data class Conductor(val info: ConductorInfo) : Session
-    data object Admin : Session
 }
 
 fun marca(): AnnotatedString = buildAnnotatedString {
@@ -126,11 +124,6 @@ fun LoginScreen(c: AppContainer, onSession: (Session) -> Unit) {
         ) { Text("🔑 Ingreso Biométrico (Huella/Rostro)", fontWeight = FontWeight.Bold, fontSize = 17.sp) }
 
         Spacer(Modifier.height(16.dp))
-        TextButton(onClick = { onSession(Session.Admin) }) {
-            Text("⚙️ Panel Administrador CONATACOCH", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Verde)
-        }
-
-        Spacer(Modifier.height(12.dp))
         Text(
             "Demo: RUT 12.345.678-5 · Patente AB·CD-12",
             color = Gris, fontSize = 14.sp

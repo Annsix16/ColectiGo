@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.fragment.app.FragmentActivity
-import cl.conatacoch.colectigo.ui.AdminApp
 import cl.conatacoch.colectigo.ui.ConductorApp
 import cl.conatacoch.colectigo.ui.LoginScreen
 import cl.conatacoch.colectigo.ui.PasajeroApp
@@ -27,7 +26,6 @@ class MainActivity : FragmentActivity() {
                     Session.None -> LoginScreen(container) { session = it }
                     Session.Pasajero -> PasajeroApp(container) { session = Session.None }
                     is Session.Conductor -> ConductorApp(container, s.info) { session = Session.None }
-                    Session.Admin -> AdminApp(container) { session = Session.None }
                 }
             }
         }

@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -177,11 +178,14 @@ fun RouteMap(
         MapView(ctx).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
-            setBuiltInZoomControls(false)
+            clipToOutline = true
+            clipChildren = true
             controller.setZoom(14.5)
             if (route.paradas.isNotEmpty()) {
                 val p = route.paradas.first().pos
-                controller.setCenter(GeoPoint(p.latitude, p.longitude))
+                if (p.latitude != 0.0 && p.longitude != 0.0) {
+                    controller.setCenter(GeoPoint(p.latitude, p.longitude))
+                }
             }
             setOnTouchListener { v, event ->
                 when (event.action) {
@@ -200,47 +204,56 @@ fun RouteMap(
     val seguido = vehiculos.firstOrNull { it.id == followVehiculo && it.real }
     LaunchedEffect(seguido?.pos) {
         seguido?.let {
-            mapView.controller.animateTo(GeoPoint(it.pos.latitude, it.pos.longitude))
+            if (it.pos.latitude != 0.0 && it.pos.longitude != 0.0) {
+                mapView.controller.animateTo(GeoPoint(it.pos.latitude, it.pos.longitude))
+            }
         }
     }
 
     AndroidView(
         factory = { mapView },
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().clipToBounds(),
         update = { map ->
             map.overlays.clear()
 
-            // Dibujar ruta
-            val line = OsmPolyline().apply {
-                outlinePaint.color = android.graphics.Color.parseColor("#0F9D58")
-                outlinePaint.strokeWidth = 14f
-                setPoints(route.path.points.map { GeoPoint(it.latitude, it.longitude) })
+            // Dibujar ruta (filtrando coordenadas 0,0)
+            val validPoints = route.path.points.filter { it.latitude != 0.0 && it.longitude != 0.0 && it.latitude < -1.0 }
+            if (validPoints.isNotEmpty()) {
+                val line = OsmPolyline().apply {
+                    outlinePaint.color = android.graphics.Color.parseColor("#0F9D58")
+                    outlinePaint.strokeWidth = 14f
+                    setPoints(validPoints.map { GeoPoint(it.latitude, it.longitude) })
+                }
+                map.overlays.add(line)
             }
-            map.overlays.add(line)
 
             // Dibujar paradas
             route.paradas.forEachIndexed { i, p ->
-                val m = OsmMarker(map).apply {
-                    position = GeoPoint(p.pos.latitude, p.pos.longitude)
-                    title = p.nombre
-                    snippet = "Paradero ${i + 1}"
-                    setOnMarkerClickListener { _, _ ->
-                        onParadaClick(i)
-                        showInfoWindow()
-                        true
+                if (p.pos.latitude != 0.0 && p.pos.longitude != 0.0) {
+                    val m = OsmMarker(map).apply {
+                        position = GeoPoint(p.pos.latitude, p.pos.longitude)
+                        title = p.nombre
+                        snippet = "Paradero ${i + 1}"
+                        setOnMarkerClickListener { _, _ ->
+                            onParadaClick(i)
+                            showInfoWindow()
+                            true
+                        }
                     }
+                    map.overlays.add(m)
                 }
-                map.overlays.add(m)
             }
 
             // Dibujar colectivos en servicio
             vehiculos.forEach { v ->
-                val vm = OsmMarker(map).apply {
-                    position = GeoPoint(v.pos.latitude, v.pos.longitude)
-                    title = "Colectivo ${formatPatente(v.patente)}"
-                    snippet = if (v.real) "GPS en vivo · ${asientosTexto(v.asientosLibres)}" else asientosTexto(v.asientosLibres)
+                if (v.pos.latitude != 0.0 && v.pos.longitude != 0.0) {
+                    val vm = OsmMarker(map).apply {
+                        position = GeoPoint(v.pos.latitude, v.pos.longitude)
+                        title = "Colectivo ${formatPatente(v.patente)}"
+                        snippet = if (v.real) "GPS en vivo · ${asientosTexto(v.asientosLibres)}" else asientosTexto(v.asientosLibres)
+                    }
+                    map.overlays.add(vm)
                 }
-                map.overlays.add(vm)
             }
             map.invalidate()
         }

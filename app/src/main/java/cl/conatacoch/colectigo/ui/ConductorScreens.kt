@@ -48,17 +48,20 @@ import androidx.compose.ui.unit.sp
 import cl.conatacoch.colectigo.AppContainer
 import cl.conatacoch.colectigo.data.CANAL_CONDUCTOR
 import cl.conatacoch.colectigo.data.ConductorInfo
+import cl.conatacoch.colectigo.data.ReservaItem
+import cl.conatacoch.colectigo.ui.theme.Ambar
 import cl.conatacoch.colectigo.ui.theme.FondoSuave
 import cl.conatacoch.colectigo.ui.theme.Gris
 import cl.conatacoch.colectigo.ui.theme.GrisClaro
 import cl.conatacoch.colectigo.ui.theme.Rojo
 import cl.conatacoch.colectigo.ui.theme.Tinta
 import cl.conatacoch.colectigo.ui.theme.Verde
+import cl.conatacoch.colectigo.ui.theme.VerdeClaro
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val TABS_CONDUCTOR = listOf("Mapa", "Historial", "Mensajes", "Perfil")
+private val TABS_CONDUCTOR = listOf("Mapa", "Reservas", "Historial", "Mensajes", "Perfil")
 
 @Composable
 fun ConductorApp(c: AppContainer, info: ConductorInfo, onExit: () -> Unit) {
@@ -67,7 +70,6 @@ fun ConductorApp(c: AppContainer, info: ConductorInfo, onExit: () -> Unit) {
     val perm = rememberLocationPermission()
     val snackbar = remember { SnackbarHostState() }
 
-    // Rastreo en tiempo real (Play Services Location). Vive aquí para seguir activo al cambiar de pestaña.
     LaunchedEffect(compartir, perm.granted) {
         if (compartir && perm.granted) {
             c.location.updates().collect { loc ->
@@ -88,8 +90,9 @@ fun ConductorApp(c: AppContainer, info: ConductorInfo, onExit: () -> Unit) {
                     compartir = on
                     if (on && !perm.granted) perm.request()
                 }
-                1 -> IngresosConductor(c, info)
-                2 -> MensajesScreen(c.db, CANAL_CONDUCTOR, info.nombre)
+                1 -> ReservasConductor(c, info, snackbar)
+                2 -> IngresosConductor(c, info)
+                3 -> MensajesScreen(c.db, CANAL_CONDUCTOR, info.nombre)
                 else -> PerfilConductor(info, onExit)
             }
         }
@@ -124,6 +127,18 @@ fun PanelConductor(
             if (compartir && permisoOk) Pill("Activo") else Pill("Sin GPS", GrisClaro, Gris)
         }
 
+        // Alerta de vencimiento de licencia <= 30 días
+        if (info.requiereAlertaLicencia()) {
+            Box(
+                Modifier.fillMaxWidth().background(Rojo).padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    "⚠️ Alerta: Tu Licencia de Conducir (${info.tipoLicencia}) vence en ${info.diasHastaVencimientoLicencia()} días (${info.vencimientoLicencia}). Renóvala con tiempo.",
+                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp
+                )
+            }
+        }
+
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -131,10 +146,10 @@ fun PanelConductor(
             CardBox {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Asientos disponibles", color = Gris)
+                        Text("Asientos disponibles", color = Gris, fontSize = 16.sp)
                         Row(verticalAlignment = Alignment.Bottom) {
-                            Text("${mine?.asientosLibres ?: 0}", fontSize = 40.sp, fontWeight = FontWeight.Bold)
-                            Text("  / ${info.capacidad}", color = Gris, fontSize = 20.sp, modifier = Modifier.padding(bottom = 6.dp))
+                            Text("${mine?.asientosLibres ?: 0}", fontSize = 44.sp, fontWeight = FontWeight.Bold)
+                            Text("  / ${info.capacidad}", color = Gris, fontSize = 22.sp, modifier = Modifier.padding(bottom = 6.dp))
                         }
                     }
                     OutlinedButton(
@@ -154,10 +169,10 @@ fun PanelConductor(
             CardBox {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Compartir mi ubicación", fontWeight = FontWeight.Bold)
+                        Text("Compartir mi ubicación en vivo", fontWeight = FontWeight.Bold, fontSize = 17.sp)
                         Text(
-                            if (compartir && !permisoOk) "Falta el permiso de ubicación" else "Los pasajeros verán tu vehículo en vivo",
-                            color = if (compartir && !permisoOk) Rojo else Gris, fontSize = 13.sp
+                            if (compartir && !permisoOk) "Falta el permiso de ubicación" else "Los pasajeros verán tu colectivo en el mapa",
+                            color = if (compartir && !permisoOk) Rojo else Gris, fontSize = 14.sp
                         )
                     }
                     Switch(checked = compartir, onCheckedChange = onToggle)
@@ -176,24 +191,24 @@ fun PanelConductor(
             CardBox {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text("Último pago recibido", color = Gris)
+                        Text("Último pago recibido", color = Gris, fontSize = 15.sp)
                         val p = pagos.firstOrNull()
                         Row(verticalAlignment = Alignment.Bottom) {
-                            Text(p?.let { clp(it.monto) } ?: "—", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text(p?.let { clp(it.monto) } ?: "—", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             p?.let { Text("  hace ${it.haceMin} min", color = Gris, modifier = Modifier.padding(bottom = 2.dp)) }
                         }
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("Ingresos de hoy", color = Gris)
-                        Text(clp(ingresos.hoy), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("Ingresos de hoy", color = Gris, fontSize = 15.sp)
+                        Text(clp(ingresos.hoy), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
             ultimoMsg?.let {
                 CardBox {
-                    Text(it.emisor, fontWeight = FontWeight.Bold)
-                    Text(it.contenido, color = Gris)
+                    Text(it.emisor, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(it.contenido, color = Gris, fontSize = 15.sp)
                 }
             }
         }
@@ -203,7 +218,7 @@ fun PanelConductor(
             colors = ButtonDefaults.buttonColors(containerColor = Rojo, contentColor = Color.White),
             modifier = Modifier.fillMaxWidth().padding(16.dp).height(72.dp),
             shape = RoundedCornerShape(22.dp)
-        ) { Text("EMERGENCIA", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+        ) { Text("EMERGENCIA SOS", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
     }
 
     if (confirmar) {
@@ -216,12 +231,62 @@ fun PanelConductor(
                     confirmar = false
                     val pos = mine?.pos ?: route?.paradas?.firstOrNull()?.pos ?: LatLng(0.0, 0.0)
                     c.db.registrarAlerta(info.usuarioId, pos.latitude, pos.longitude)
-                    // TODO backend: enviar la alerta (conductor, hora, ubicación) en < 3 s a la dirigencia (RF18).
-                    scope.launch { snackbar.showSnackbar("Alerta registrada y enviada a la Dirigencia (simulado)") }
+                    scope.launch { snackbar.showSnackbar("Alerta registrada y enviada a la Dirigencia") }
                 }) { Text("Activar", color = Rojo, fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { confirmar = false }) { Text("Cancelar") } }
         )
+    }
+}
+
+@Composable
+fun ReservasConductor(c: AppContainer, info: ConductorInfo, snackbar: SnackbarHostState) {
+    var tick by remember { mutableIntStateOf(0) }
+    val reservas = remember(tick) { c.db.reservasPendientes(info.vehiculoId) }
+    val scope = rememberCoroutineScope()
+
+    Column(Modifier.fillMaxSize()) {
+        ScreenTitle("Solicitudes de Reserva")
+        Text("Pasajeros solicitando viaje en tu vehículo", color = Gris, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        Spacer(Modifier.height(12.dp))
+
+        if (reservas.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No hay reservas pendientes.", color = Gris, fontSize = 18.sp)
+            }
+        } else {
+            LazyColumn(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(reservas) { r ->
+                    CardBox {
+                        Text("Pasajero: ${r.pasajeroNombre}", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Tinta)
+                        Text("Paradero: ${r.paradaNombre}", fontSize = 16.sp, color = Gris)
+                        Text("Monto: ${clp(r.monto)} · ${r.fecha}", fontSize = 15.sp, color = Tinta)
+                        Spacer(Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    c.db.responderReserva(r.id, aceptar = false, vehiculoId = info.vehiculoId)
+                                    tick++
+                                    scope.launch { snackbar.showSnackbar("Reserva de ${r.pasajeroNombre} rechazada") }
+                                },
+                                modifier = Modifier.weight(1f).height(56.dp),
+                                shape = RoundedCornerShape(16.dp)
+                            ) { Text("Rechazar", color = Rojo, fontWeight = FontWeight.Bold, fontSize = 17.sp) }
+
+                            Button(
+                                onClick = {
+                                    c.db.responderReserva(r.id, aceptar = true, vehiculoId = info.vehiculoId)
+                                    tick++
+                                    scope.launch { snackbar.showSnackbar("Reserva aceptada. Asiento reservado") }
+                                },
+                                modifier = Modifier.weight(1f).height(56.dp),
+                                shape = RoundedCornerShape(16.dp)
+                            ) { Text("Aceptar", fontWeight = FontWeight.Bold, fontSize = 17.sp) }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -232,16 +297,16 @@ fun IngresosConductor(c: AppContainer, info: ConductorInfo) {
     Column(Modifier.fillMaxSize()) {
         ScreenTitle("Historial de ingresos")
         Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            CardBox(Modifier.weight(1f)) { Text("Hoy", color = Gris); Text(clp(ing.hoy), fontSize = 22.sp, fontWeight = FontWeight.Bold) }
-            CardBox(Modifier.weight(1f)) { Text("Esta semana", color = Gris); Text(clp(ing.semana), fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+            CardBox(Modifier.weight(1f)) { Text("Hoy", color = Gris, fontSize = 15.sp); Text(clp(ing.hoy), fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            CardBox(Modifier.weight(1f)) { Text("Esta semana", color = Gris, fontSize = 15.sp); Text(clp(ing.semana), fontSize = 24.sp, fontWeight = FontWeight.Bold) }
         }
         Spacer(Modifier.height(12.dp))
         LazyColumn(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(pagos) { p ->
                 CardBox {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(clp(p.monto), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text(p.fecha, color = Gris)
+                        Text(clp(p.monto), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(p.fecha, color = Gris, fontSize = 15.sp)
                     }
                 }
             }
@@ -252,25 +317,27 @@ fun IngresosConductor(c: AppContainer, info: ConductorInfo) {
 @Composable
 fun PerfilConductor(info: ConductorInfo, onExit: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        ScreenTitle("Perfil")
+        ScreenTitle("Perfil del Conductor")
         Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             CardBox {
-                Text(info.nombre, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text("Rut ${formatRut(info.rut)}", color = Gris)
-                Text("Licencia clase ${info.licencia}", color = Gris)
-                Text(if (info.afiliado) "Afiliación vigente" else "Afiliación no vigente", color = Verde, fontWeight = FontWeight.Bold)
+                Text(info.nombre, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Tinta)
+                Text("RUT ${formatRut(info.rut)}", color = Gris, fontSize = 16.sp)
+                Text("Licencia Clase ${info.tipoLicencia} (Vence: ${info.vencimientoLicencia})", color = if (info.requiereAlertaLicencia()) Rojo else Tinta, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(if (info.afiliado) "Afiliación CONATACOCH vigente" else "Afiliación no vigente", color = Verde, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
+
             CardBox {
-                Text("Vehículo (solo lectura)", fontWeight = FontWeight.Bold)
-                Text("${formatPatente(info.patente)} · ${info.marca} ${info.modelo}", color = Tinta)
-                Text("Capacidad: ${info.capacidad} asientos", color = Gris)
-                Text(
-                    "Los datos del vehículo están vinculados a la póliza de seguro. Para modificarlos, contacta a CONATACOCH.",
-                    color = Gris, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)
-                )
+                Text("Datos de Documentación del Vehículo", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("${formatPatente(info.patente)} · ${info.marca} ${info.modelo}", color = Tinta, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("Comuna: ${info.comuna}", color = Gris, fontSize = 15.sp)
+                Text("Permiso de Circulación Vence: ${info.permisoCirculacionVenc}", color = Gris, fontSize = 15.sp)
+                Text("Revisión Técnica Vence: ${info.revisionTecnicaVenc} (${info.plantaRevision})", color = Gris, fontSize = 15.sp)
+                Text("Seguro Obligatorio (SOAP): ${info.seguroObligatorioVenc}", color = Gris, fontSize = 15.sp)
             }
-            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(20.dp)) {
-                Text("Cerrar sesión", fontWeight = FontWeight.Bold)
+
+            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(20.dp)) {
+                Text("Cerrar sesión", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
         }
     }

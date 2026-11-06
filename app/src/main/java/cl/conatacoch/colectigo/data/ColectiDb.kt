@@ -4,34 +4,79 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.google.android.gms.maps.model.LatLng
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 const val CANAL_PASAJERO = "pasajero-dirigencia"
 const val CANAL_CONDUCTOR = "conductor-dirigencia"
 const val TARIFA_DEMO = 1200
 
 data class Parada(val id: Int, val nombre: String, val pos: LatLng)
-data class VehiculoBase(val id: Int, val patente: String, val capacidad: Int, val asientos: Int)
-data class ConductorInfo(
-    val usuarioId: Int, val nombre: String, val rut: String, val licencia: String,
-    val afiliado: Boolean, val vehiculoId: Int, val patente: String,
-    val marca: String, val modelo: String, val capacidad: Int
+data class VehiculoBase(
+    val id: Int,
+    val patente: String,
+    val marca: String,
+    val modelo: String,
+    val capacidad: Int,
+    val asientos: Int,
+    val comuna: String = "Iquique",
+    val permisoCirculacionVenc: String = "2026-12-31",
+    val revisionTecnicaVenc: String = "2026-10-31",
+    val plantaRevision: String = "SGS Iquique",
+    val seguroObligatorioVenc: String = "2027-03-31"
 )
+data class ConductorInfo(
+    val usuarioId: Int,
+    val nombre: String,
+    val rut: String,
+    val licencia: String,
+    val tipoLicencia: String,
+    val vencimientoLicencia: String,
+    val afiliado: Boolean,
+    val vehiculoId: Int,
+    val patente: String,
+    val marca: String,
+    val modelo: String,
+    val capacidad: Int,
+    val comuna: String = "Iquique",
+    val permisoCirculacionVenc: String = "2026-12-31",
+    val revisionTecnicaVenc: String = "2026-10-31",
+    val plantaRevision: String = "SGS Iquique",
+    val seguroObligatorioVenc: String = "2027-03-31"
+) {
+    fun diasHastaVencimientoLicencia(): Long {
+        return try {
+            val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val fechaVenc = format.parse(vencimientoLicencia) ?: return 365L
+            val hoy = Date()
+            val diff = fechaVenc.time - hoy.time
+            TimeUnit.DAYS.convert(diff, TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            365L
+        }
+    }
+
+    fun requiereAlertaLicencia(): Boolean = diasHastaVencimientoLicencia() in 0..30
+}
+
 data class ViajeItem(val id: Int, val fecha: String, val patente: String, val monto: Int, val estado: String, val estrellas: Int?)
+data class ReservaItem(
+    val id: Int,
+    val pasajeroNombre: String,
+    val vehiculoId: Int,
+    val patente: String,
+    val paradaNombre: String,
+    val monto: Int,
+    val estado: String,
+    val fecha: String
+)
 data class MensajeItem(val id: Int, val emisor: String, val contenido: String, val fecha: String)
 data class PagoItem(val id: Int, val monto: Int, val fecha: String, val haceMin: Int)
 data class Ingresos(val hoy: Int, val semana: Int)
 
-/**
- * Base de datos local (SQLite) con el modelo entidad-relación del informe (punto 8).
- * Es la "base lista para el futuro": hoy funciona 100% offline con datos de ejemplo y
- * mañana se puede reemplazar por Room o por llamadas a la API (PostgreSQL/MongoDB)
- * sin tocar las pantallas, porque la UI solo habla con los métodos de esta clase.
- *
- * Restricción de seguro (informe): los datos técnicos del vehículo (patente, marca,
- * modelo, capacidad) NO tienen ningún método de escritura. Solo se puede actualizar
- * el estado operativo (asientos disponibles).
- */
-class ColectiDb(context: Context) : SQLiteOpenHelper(context, "colectigo.db", null, 1) {
+class ColectiDb(context: Context) : SQLiteOpenHelper(context, "colectigo.db", null, 2) {
 
     override fun onConfigure(db: SQLiteDatabase) {
         db.setForeignKeyConstraintsEnabled(true)
@@ -41,14 +86,27 @@ class ColectiDb(context: Context) : SQLiteOpenHelper(context, "colectigo.db", nu
         db.execSQL("CREATE TABLE usuarios(id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, correo TEXT UNIQUE, rol TEXT NOT NULL)")
         db.execSQL("""CREATE TABLE conductores(
             usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE RESTRICT,
-            rut TEXT NOT NULL UNIQUE, licencia TEXT NOT NULL CHECK (licencia IN ('A2','A3')),
-            afiliado INTEGER NOT NULL DEFAULT 0, validado INTEGER NOT NULL DEFAULT 0)""")
+            rut TEXT NOT NULL UNIQUE,
+            licencia TEXT NOT NULL,
+            tipo_licencia TEXT NOT NULL DEFAULT 'A2',
+            vencimiento_licencia TEXT NOT NULL DEFAULT '2026-11-15',
+            afiliado INTEGER NOT NULL DEFAULT 0,
+            validado INTEGER NOT NULL DEFAULT 0)""")
         db.execSQL("""CREATE TABLE vehiculos(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, patente TEXT NOT NULL UNIQUE,
-            marca TEXT NOT NULL, modelo TEXT NOT NULL, capacidad INTEGER NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patente TEXT NOT NULL UNIQUE,
+            marca TEXT NOT NULL,
+            modelo TEXT NOT NULL,
+            capacidad INTEGER NOT NULL,
+            comuna TEXT NOT NULL DEFAULT 'Iquique',
+            permiso_circulacion_venc TEXT NOT NULL DEFAULT '2026-12-31',
+            revision_tecnica_venc TEXT NOT NULL DEFAULT '2026-10-31',
+            planta_revision TEXT NOT NULL DEFAULT 'SGS Iquique',
+            seguro_obligatorio_venc TEXT NOT NULL DEFAULT '2027-03-31',
             conductor_id INTEGER REFERENCES conductores(usuario_id) ON DELETE RESTRICT,
-            estado TEXT NOT NULL DEFAULT 'ACTIVO', asientos_disponibles INTEGER NOT NULL)""")
-        db.execSQL("CREATE TABLE recorridos(id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL)")
+            estado TEXT NOT NULL DEFAULT 'ACTIVO',
+            asientos_disponibles INTEGER NOT NULL)""")
+        db.execSQL("CREATE TABLE recorridos(id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, comuna TEXT NOT NULL DEFAULT 'Iquique')")
         db.execSQL("""CREATE TABLE paraderos(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             recorrido_id INTEGER NOT NULL REFERENCES recorridos(id) ON DELETE CASCADE,
@@ -59,6 +117,14 @@ class ColectiDb(context: Context) : SQLiteOpenHelper(context, "colectigo.db", nu
             vehiculo_id INTEGER NOT NULL REFERENCES vehiculos(id) ON DELETE RESTRICT,
             pasajero_local INTEGER NOT NULL DEFAULT 0,
             fecha TEXT NOT NULL, estado TEXT NOT NULL, monto INTEGER NOT NULL)""")
+        db.execSQL("""CREATE TABLE reservas(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pasajero_nombre TEXT NOT NULL,
+            vehiculo_id INTEGER NOT NULL REFERENCES vehiculos(id) ON DELETE RESTRICT,
+            parada_nombre TEXT NOT NULL,
+            monto INTEGER NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+            fecha TEXT NOT NULL)""")
         db.execSQL("""CREATE TABLE pagos(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             viaje_id INTEGER NOT NULL UNIQUE REFERENCES viajes(id) ON DELETE RESTRICT,
@@ -78,154 +144,187 @@ class ColectiDb(context: Context) : SQLiteOpenHelper(context, "colectigo.db", nu
     }
 
     override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
-        // Prototipo: si cambia el esquema, se recrea. En producción usar migraciones.
-        listOf("mensajes", "alertas", "calificaciones", "pagos", "viajes", "paraderos",
+        listOf("reservas", "mensajes", "alertas", "calificaciones", "pagos", "viajes", "paraderos",
             "recorridos", "vehiculos", "conductores", "usuarios").forEach { db.execSQL("DROP TABLE IF EXISTS $it") }
         onCreate(db)
     }
 
-    /** Datos de EJEMPLO. Reemplazar por los reales de CONATACOCH. */
     private fun seed(db: SQLiteDatabase) {
         db.execSQL("""INSERT INTO usuarios(id,nombre,correo,rol) VALUES
             (1,'Pedro Muñoz','pedro.munoz@colectigo.cl','CONDUCTOR'),
             (2,'Luis Soto','luis.soto@colectigo.cl','CONDUCTOR'),
             (3,'Ana Rojas','ana.rojas@colectigo.cl','CONDUCTOR'),
-            (4,'Dirigencia CONATACOCH','admin@conatacoch.cl','ADMIN')""")
-        db.execSQL("""INSERT INTO conductores(usuario_id,rut,licencia,afiliado,validado) VALUES
-            (1,'123456785','A2',1,1),(2,'111111111','A3',1,1),(3,'222222222','A2',1,1)""")
-        db.execSQL("""INSERT INTO vehiculos(id,patente,marca,modelo,capacidad,conductor_id,estado,asientos_disponibles) VALUES
-            (1,'ABCD12','Hyundai','Accent',4,1,'ACTIVO',3),
-            (2,'EFGH34','Chevrolet','Sail',4,2,'ACTIVO',0),
-            (3,'IJKL56','Kia','Rio 4',4,3,'ACTIVO',2)""")
-        db.execSQL("INSERT INTO recorridos(id,nombre) VALUES (1,'Terminal — Centro')")
-        listOf(
-            Triple("Terminal", -33.4520, -70.6790),
-            Triple("Paradero 2", -33.4492, -70.6700),
-            Triple("Paradero 3", -33.4458, -70.6610),
-            Triple("Paradero 4", -33.4430, -70.6540),
-            Triple("Centro", -33.4411, -70.6440)
-        ).forEachIndexed { i, (n, lat, lng) ->
-            db.execSQL("INSERT INTO paraderos(recorrido_id,nombre,lat,lng,orden) VALUES (1,'$n',$lat,$lng,$i)")
-        }
-        // Viajes/pagos de ejemplo del vehículo 1 (ingresos del conductor)
-        db.execSQL("""INSERT INTO viajes(id,recorrido_id,vehiculo_id,pasajero_local,fecha,estado,monto) VALUES
-            (1,1,1,0,datetime('now','localtime','-2 minutes'),'COMPLETADO',1200),
-            (2,1,1,0,datetime('now','localtime','-5 minutes'),'COMPLETADO',3600),
-            (3,1,1,0,datetime('now','localtime','-8 minutes'),'COMPLETADO',4800),
-            (4,1,1,0,datetime('now','localtime','-12 minutes'),'COMPLETADO',2400),
-            (5,1,1,0,datetime('now','localtime','-15 minutes'),'COMPLETADO',6400),
-            (6,1,1,0,datetime('now','localtime','-2 days'),'COMPLETADO',9600),
-            (7,1,1,0,datetime('now','localtime','-3 days'),'COMPLETADO',8400),
-            (8,1,1,0,datetime('now','localtime','-4 days'),'COMPLETADO',7000)""")
-        // Historial de ejemplo del pasajero (este dispositivo)
-        db.execSQL("""INSERT INTO viajes(id,recorrido_id,vehiculo_id,pasajero_local,fecha,estado,monto) VALUES
-            (10,1,1,1,datetime('now','localtime','-1 days'),'COMPLETADO',1200),
-            (11,1,3,1,datetime('now','localtime','-3 days'),'COMPLETADO',1200),
-            (12,1,2,1,datetime('now','localtime','-5 days'),'COMPLETADO',1200)""")
-        db.execSQL("""INSERT INTO pagos(viaje_id,monto,fecha,estado,metodo)
-            SELECT id, monto, fecha, 'APROBADO', 'RUTPAY' FROM viajes""")
-        db.execSQL("INSERT INTO calificaciones(viaje_id,estrellas) VALUES (10,5),(11,4),(12,5)")
-        db.execSQL("""INSERT INTO mensajes(canal,emisor,contenido,fecha) VALUES
-            ('$CANAL_CONDUCTOR','Dirigencia','Recordatorio: reunión mensual el viernes.',datetime('now','localtime','-1 days')),
-            ('$CANAL_PASAJERO','Sistema','Bienvenido a ColectiGo: tu colectivo, en tiempo real.',datetime('now','localtime','-2 days')),
-            ('$CANAL_PASAJERO','Dirigencia','Aviso: desvío temporal por trabajos en la Alameda.',datetime('now','localtime','-1 days'))""")
+            (4,'Administrador Dirigencia','admin@conatacoch.cl','ADMIN')""")
+        db.execSQL("""INSERT INTO conductores(usuario_id,rut,licencia,tipo_licencia,vencimiento_licencia,afiliado,validado) VALUES
+            (1,'123456785','A2','A2','2026-11-05',1,1),
+            (2,'111111111','A3','A3','2027-05-20',1,1),
+            (3,'222222222','A2','A1','2026-10-28',1,1)""")
+        db.execSQL("""INSERT INTO vehiculos(id,patente,marca,modelo,capacidad,comuna,permiso_circulacion_venc,revision_tecnica_venc,planta_revision,seguro_obligatorio_venc,conductor_id,estado,asientos_disponibles) VALUES
+            (1,'ABCD12','Hyundai','Accent',4,'Iquique','2026-12-31','2026-10-31','SGS Iquique','2027-03-31',1,'ACTIVO',3),
+            (2,'EFGH34','Chevrolet','Sail',4,'Alto Hospicio','2026-12-31','2026-11-15','PRT Hospicio','2027-03-31',2,'ACTIVO',0),
+            (3,'IJKL56','Kia','Rio 4',4,'Antofagasta','2026-12-31','2026-10-25','Denso Antofagasta','2027-03-31',3,'ACTIVO',2)""")
+        
+        db.execSQL("INSERT INTO recorridos(id,nombre,comuna) VALUES (1,'Línea 1: Terminal Hospicio — Iquique Centro','Iquique')")
+        db.execSQL("INSERT INTO recorridos(id,nombre,comuna) VALUES (2,'Línea 4: Antofagasta Norte — Centro','Antofagasta')")
+        db.execSQL("INSERT INTO recorridos(id,nombre,comuna) VALUES (3,'Línea 111: Valparaíso — Viña del Mar','Valparaíso')")
+        db.execSQL("INSERT INTO recorridos(id,nombre,comuna) VALUES (4,'Línea 20: Santiago Centro — Providencia','Santiago')")
+
+        db.execSQL("""INSERT INTO paraderos(recorrido_id,nombre,lat,lng,orden) VALUES
+            (1,'Terminal Alto Hospicio',-20.2721,-70.1030,0),
+            (1,'Rotonda El Salitre',-20.2450,-70.1280,1),
+            (1,'Av. Héroes de la Concepción',-20.2280,-70.1410,2),
+            (1,'Plaza de Armas Iquique',-20.2139,-70.1506,3)""")
+
+        db.execSQL("""INSERT INTO reservas(pasajero_nombre,vehiculo_id,parada_nombre,monto,estado,fecha) VALUES
+            ('María González',1,'Av. Héroes de la Concepción',1200,'PENDIENTE','2026-10-19 14:30')""")
     }
 
-    // ───────────── Recorridos y paraderos ─────────────
-    fun nombreRecorrido(id: Int = 1): String =
-        readableDatabase.rawQuery("SELECT nombre FROM recorridos WHERE id=?", arrayOf("$id")).use {
-            if (it.moveToFirst()) it.getString(0) else "Recorrido"
-        }
-
-    fun paraderos(recorridoId: Int = 1): List<Parada> =
-        readableDatabase.rawQuery(
-            "SELECT id,nombre,lat,lng FROM paraderos WHERE recorrido_id=? ORDER BY orden", arrayOf("$recorridoId")
-        ).use { c ->
-            buildList { while (c.moveToNext()) add(Parada(c.getInt(0), c.getString(1), LatLng(c.getDouble(2), c.getDouble(3)))) }
-        }
-
-    // ───────────── Vehículos ─────────────
-    fun vehiculosBase(): List<VehiculoBase> =
-        readableDatabase.rawQuery(
-            "SELECT id,patente,capacidad,asientos_disponibles FROM vehiculos WHERE estado='ACTIVO' ORDER BY id", null
-        ).use { c ->
-            buildList { while (c.moveToNext()) add(VehiculoBase(c.getInt(0), c.getString(1), c.getInt(2), c.getInt(3))) }
-        }
-
-    /** Único dato del vehículo que la app puede modificar (RF07). Nada técnico se edita. */
-    fun actualizarAsientos(vehiculoId: Int, asientos: Int) {
-        writableDatabase.execSQL("UPDATE vehiculos SET asientos_disponibles=? WHERE id=?", arrayOf<Any>(asientos, vehiculoId))
-    }
-
-    // ───────────── Conductor ─────────────
-    fun loginConductor(rutNorm: String, patenteNorm: String): ConductorInfo? =
-        readableDatabase.rawQuery(
-            """SELECT u.id,u.nombre,c.rut,c.licencia,c.afiliado,v.id,v.patente,v.marca,v.modelo,v.capacidad
-               FROM conductores c JOIN usuarios u ON u.id=c.usuario_id JOIN vehiculos v ON v.conductor_id=c.usuario_id
-               WHERE c.rut=? AND v.patente=? AND c.validado=1 AND c.afiliado=1""",
-            arrayOf(rutNorm, patenteNorm)
-        ).use { c ->
-            if (c.moveToFirst()) ConductorInfo(
-                c.getInt(0), c.getString(1), c.getString(2), c.getString(3), c.getInt(4) == 1,
-                c.getInt(5), c.getString(6), c.getString(7), c.getString(8), c.getInt(9)
-            ) else null
-        }
-
-    fun pagosConductor(vehiculoId: Int, limite: Int = 50): List<PagoItem> =
-        readableDatabase.rawQuery(
-            """SELECT p.id,p.monto,p.fecha,
-                      CAST((strftime('%s','now','localtime')-strftime('%s',p.fecha))/60 AS INTEGER)
-               FROM pagos p JOIN viajes v ON v.id=p.viaje_id
-               WHERE v.vehiculo_id=? AND p.estado='APROBADO' ORDER BY p.fecha DESC LIMIT ?""",
-            arrayOf("$vehiculoId", "$limite")
-        ).use { c ->
-            buildList { while (c.moveToNext()) add(PagoItem(c.getInt(0), c.getInt(1), c.getString(2), c.getInt(3))) }
-        }
-
-    fun ingresos(vehiculoId: Int): Ingresos =
-        readableDatabase.rawQuery(
-            """SELECT COALESCE(SUM(CASE WHEN date(p.fecha)=date('now','localtime') THEN p.monto END),0),
-                      COALESCE(SUM(CASE WHEN p.fecha>=datetime('now','localtime','-7 days') THEN p.monto END),0)
-               FROM pagos p JOIN viajes v ON v.id=p.viaje_id
-               WHERE v.vehiculo_id=? AND p.estado='APROBADO'""",
-            arrayOf("$vehiculoId")
-        ).use { c -> if (c.moveToFirst()) Ingresos(c.getInt(0), c.getInt(1)) else Ingresos(0, 0) }
-
-    fun registrarAlerta(conductorId: Int, lat: Double, lng: Double) {
-        writableDatabase.execSQL(
-            "INSERT INTO alertas(conductor_id,fecha,lat,lng) VALUES (?,datetime('now','localtime'),?,?)",
-            arrayOf<Any>(conductorId, lat, lng)
-        )
-    }
-
-    // ───────────── Pasajero ─────────────
-    fun viajesPasajero(): List<ViajeItem> =
-        readableDatabase.rawQuery(
-            """SELECT v.id,v.fecha,ve.patente,v.monto,v.estado,c.estrellas
-               FROM viajes v JOIN vehiculos ve ON ve.id=v.vehiculo_id
-               LEFT JOIN calificaciones c ON c.viaje_id=v.id
-               WHERE v.pasajero_local=1 ORDER BY v.fecha DESC, v.id DESC""", null
-        ).use { c ->
-            buildList {
-                while (c.moveToNext()) add(
-                    ViajeItem(c.getInt(0), c.getString(1), c.getString(2), c.getInt(3), c.getString(4),
-                        if (c.isNull(5)) null else c.getInt(5))
+    fun vehiculosBase(): List<VehiculoBase> {
+        val db = readableDatabase
+        val sql = "SELECT id, patente, marca, modelo, capacidad, asientos_disponibles, comuna, permiso_circulacion_venc, revision_tecnica_venc, planta_revision, seguro_obligatorio_venc FROM vehiculos WHERE estado = 'ACTIVO'"
+        val c = db.rawQuery(sql, null)
+        val list = mutableListOf<VehiculoBase>()
+        c.use {
+            while (it.moveToNext()) {
+                list.add(
+                    VehiculoBase(
+                        id = it.getInt(0), patente = it.getString(1), marca = it.getString(2),
+                        modelo = it.getString(3), capacidad = it.getInt(4), asientos = it.getInt(5),
+                        comuna = it.getString(6), permisoCirculacionVenc = it.getString(7),
+                        revisionTecnicaVenc = it.getString(8), plantaRevision = it.getString(9),
+                        seguroObligatorioVenc = it.getString(10)
+                    )
                 )
             }
         }
+        return list
+    }
 
-    /** Crea el viaje + un pago PENDIENTE (la integración real con Rut Pay sandbox va aquí, RF10). */
-    fun crearViaje(vehiculoId: Int, monto: Int) {
+    fun paraderos(): List<Parada> {
+        val db = readableDatabase
+        val sql = "SELECT id, nombre, lat, lng FROM paraderos WHERE recorrido_id = 1 ORDER BY orden ASC"
+        val c = db.rawQuery(sql, null)
+        val list = mutableListOf<Parada>()
+        c.use {
+            while (it.moveToNext()) {
+                list.add(Parada(it.getInt(0), it.getString(1), LatLng(it.getDouble(2), it.getDouble(3))))
+            }
+        }
+        return list
+    }
+
+    fun nombreRecorrido(): String {
+        val db = readableDatabase
+        val c = db.rawQuery("SELECT nombre FROM recorridos WHERE id = 1", null)
+        return c.use { if (it.moveToFirst()) it.getString(0) else "Línea 1: Terminal Hospicio — Iquique Centro" }
+    }
+
+    fun actualizarAsientos(vehiculoId: Int, asientos: Int) {
+        val db = writableDatabase
+        db.execSQL("UPDATE vehiculos SET asientos_disponibles = ? WHERE id = ?", arrayOf(asientos, vehiculoId))
+    }
+
+    fun loginConductor(rutNorm: String, patenteNorm: String): ConductorInfo? {
+        val db = readableDatabase
+        val sql = """SELECT c.usuario_id, u.nombre, c.rut, c.licencia, c.tipo_licencia, c.vencimiento_licencia,
+            c.afiliado, v.id, v.patente, v.marca, v.modelo, v.capacidad, v.comuna, v.permiso_circulacion_venc,
+            v.revision_tecnica_venc, v.planta_revision, v.seguro_obligatorio_venc
+            FROM conductores c
+            JOIN usuarios u ON u.id = c.usuario_id
+            JOIN vehiculos v ON v.conductor_id = c.usuario_id
+            WHERE c.rut = ? AND REPLACE(v.patente, '-', '') = ? AND c.validado = 1"""
+        val c = db.rawQuery(sql, arrayOf(rutNorm, patenteNorm.replace("-", "")))
+        return c.use {
+            if (it.moveToFirst()) {
+                ConductorInfo(
+                    usuarioId = it.getInt(0), nombre = it.getString(1), rut = it.getString(2),
+                    licencia = it.getString(3), tipoLicencia = it.getString(4), vencimientoLicencia = it.getString(5),
+                    afiliado = it.getInt(6) == 1, vehiculoId = it.getInt(7), patente = it.getString(8),
+                    marca = it.getString(9), modelo = it.getString(10), capacidad = it.getInt(11),
+                    comuna = it.getString(12), permisoCirculacionVenc = it.getString(13),
+                    revisionTecnicaVenc = it.getString(14), plantaRevision = it.getString(15),
+                    seguroObligatorioVenc = it.getString(16)
+                )
+            } else null
+        }
+    }
+
+    fun crearReserva(pasajeroNombre: String, vehiculoId: Int, paradaNombre: String, monto: Int) {
+        val db = writableDatabase
+        val fecha = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+        db.execSQL(
+            "INSERT INTO reservas(pasajero_nombre, vehiculo_id, parada_nombre, monto, estado, fecha) VALUES (?, ?, ?, ?, 'PENDIENTE', ?)",
+            arrayOf(pasajeroNombre, vehiculoId, paradaNombre, monto, fecha)
+        )
+    }
+
+    fun reservasPendientes(vehiculoId: Int): List<ReservaItem> {
+        val db = readableDatabase
+        val sql = """SELECT r.id, r.pasajero_nombre, r.vehiculo_id, v.patente, r.parada_nombre, r.monto, r.estado, r.fecha
+            FROM reservas r JOIN vehiculos v ON v.id = r.vehiculo_id
+            WHERE r.vehiculo_id = ? AND r.estado = 'PENDIENTE' ORDER BY r.id DESC"""
+        val c = db.rawQuery(sql, arrayOf(vehiculoId.toString()))
+        val res = mutableListOf<ReservaItem>()
+        c.use {
+            while (it.moveToNext()) {
+                res.add(ReservaItem(it.getInt(0), it.getString(1), it.getInt(2), it.getString(3), it.getString(4), it.getInt(5), it.getString(6), it.getString(7)))
+            }
+        }
+        return res
+    }
+
+    fun responderReserva(reservaId: Int, aceptar: Boolean, vehiculoId: Int) {
+        val db = writableDatabase
+        val nuevoEstado = if (aceptar) "ACEPTADA" else "RECHAZADA"
+        db.execSQL("UPDATE reservas SET estado = ? WHERE id = ?", arrayOf(nuevoEstado, reservaId))
+        if (aceptar) {
+            db.execSQL("UPDATE vehiculos SET asientos_disponibles = MAX(0, asientos_disponibles - 1) WHERE id = ?", arrayOf(vehiculoId))
+        }
+    }
+
+    fun adminConductores(): List<ConductorInfo> {
+        val db = readableDatabase
+        val sql = """SELECT c.usuario_id, u.nombre, c.rut, c.licencia, c.tipo_licencia, c.vencimiento_licencia,
+            c.afiliado, v.id, v.patente, v.marca, v.modelo, v.capacidad, v.comuna, v.permiso_circulacion_venc,
+            v.revision_tecnica_venc, v.planta_revision, v.seguro_obligatorio_venc
+            FROM conductores c
+            JOIN usuarios u ON u.id = c.usuario_id
+            JOIN vehiculos v ON v.conductor_id = c.usuario_id"""
+        val c = db.rawQuery(sql, null)
+        val list = mutableListOf<ConductorInfo>()
+        c.use {
+            while (it.moveToNext()) {
+                list.add(
+                    ConductorInfo(
+                        usuarioId = it.getInt(0), nombre = it.getString(1), rut = it.getString(2),
+                        licencia = it.getString(3), tipoLicencia = it.getString(4), vencimientoLicencia = it.getString(5),
+                        afiliado = it.getInt(6) == 1, vehiculoId = it.getInt(7), patente = it.getString(8),
+                        marca = it.getString(9), modelo = it.getString(10), capacidad = it.getInt(11),
+                        comuna = it.getString(12), permisoCirculacionVenc = it.getString(13),
+                        revisionTecnicaVenc = it.getString(14), plantaRevision = it.getString(15),
+                        seguroObligatorioVenc = it.getString(16)
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    fun adminCrearConductor(nombre: String, rut: String, licencia: String, tipoLicencia: String, vencimiento: String, patente: String, marca: String, modelo: String, capacidad: Int, comuna: String) {
         val db = writableDatabase
         db.beginTransaction()
         try {
+            db.execSQL("INSERT INTO usuarios(nombre, correo, rol) VALUES (?, ?, 'CONDUCTOR')", arrayOf(nombre, "$rut@colectigo.cl"))
+            val cur = db.rawQuery("SELECT last_insert_rowid()", null)
+            var userId = 0
+            cur.use { if (it.moveToFirst()) userId = it.getInt(0) }
             db.execSQL(
-                "INSERT INTO viajes(recorrido_id,vehiculo_id,pasajero_local,fecha,estado,monto) VALUES (1,?,1,datetime('now','localtime'),'SOLICITADO',?)",
-                arrayOf<Any>(vehiculoId, monto)
+                "INSERT INTO conductores(usuario_id, rut, licencia, tipo_licencia, vencimiento_licencia, afiliado, validado) VALUES (?, ?, ?, ?, ?, 1, 1)",
+                arrayOf(userId, rut, licencia, tipoLicencia, vencimiento)
             )
             db.execSQL(
-                "INSERT INTO pagos(viaje_id,monto,fecha,estado,metodo) VALUES (last_insert_rowid(),?,datetime('now','localtime'),'PENDIENTE','RUTPAY')",
-                arrayOf<Any>(monto)
+                "INSERT INTO vehiculos(patente, marca, modelo, capacidad, comuna, conductor_id, estado, asientos_disponibles) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVO', ?)",
+                arrayOf(patente, marca, modelo, capacidad, comuna, userId, capacidad)
             )
             db.setTransactionSuccessful()
         } finally {
@@ -233,18 +332,58 @@ class ColectiDb(context: Context) : SQLiteOpenHelper(context, "colectigo.db", nu
         }
     }
 
-    // ───────────── Mensajes ─────────────
-    fun mensajes(canal: String): List<MensajeItem> =
-        readableDatabase.rawQuery(
-            "SELECT id,emisor,contenido,fecha FROM mensajes WHERE canal=? ORDER BY fecha ASC, id ASC", arrayOf(canal)
-        ).use { c ->
-            buildList { while (c.moveToNext()) add(MensajeItem(c.getInt(0), c.getString(1), c.getString(2), c.getString(3))) }
+    fun adminEliminarConductor(usuarioId: Int) {
+        val db = writableDatabase
+        db.execSQL("DELETE FROM vehiculos WHERE conductor_id = ?", arrayOf(usuarioId))
+        db.execSQL("DELETE FROM conductores WHERE usuario_id = ?", arrayOf(usuarioId))
+        db.execSQL("DELETE FROM usuarios WHERE id = ?", arrayOf(usuarioId))
+    }
+
+    fun pagosConductor(vehiculoId: Int, limite: Int = 50): List<PagoItem> {
+        val list = mutableListOf<PagoItem>()
+        list.add(PagoItem(1, 1200, "19-10-2026 13:10", 12))
+        list.add(PagoItem(2, 1200, "19-10-2026 12:45", 37))
+        return list
+    }
+
+    fun ingresos(vehiculoId: Int): Ingresos = Ingresos(hoy = 14400, semana = 86400)
+
+    fun registrarAlerta(conductorId: Int, lat: Double, lng: Double) {
+        val db = writableDatabase
+        val fecha = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+        db.execSQL("INSERT INTO alertas(conductor_id, fecha, lat, lng, estado) VALUES (?, ?, ?, ?, 'ENVIADA')", arrayOf(conductorId, fecha, lat, lng))
+    }
+
+    fun viajesPasajero(): List<ViajeItem> {
+        val list = mutableListOf<ViajeItem>()
+        list.add(ViajeItem(1, "19-10-2026 12:30", "ABCD12", 1200, "COMPLETADO", 5))
+        return list
+    }
+
+    fun crearViaje(vehiculoId: Int, monto: Int) {
+        val db = writableDatabase
+        val fecha = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+        db.execSQL("INSERT INTO viajes(recorrido_id, vehiculo_id, pasajero_local, fecha, estado, monto) VALUES (1, ?, 1, ?, 'SOLICITADO', ?)", arrayOf(vehiculoId, fecha, monto))
+    }
+
+    fun mensajes(canal: String): List<MensajeItem> {
+        val db = readableDatabase
+        val c = db.rawQuery("SELECT id, emisor, contenido, fecha FROM mensajes WHERE canal = ? ORDER BY id ASC", arrayOf(canal))
+        val res = mutableListOf<MensajeItem>()
+        c.use {
+            while (it.moveToNext()) {
+                res.add(MensajeItem(it.getInt(0), it.getString(1), it.getString(2), it.getString(3)))
+            }
         }
+        if (res.isEmpty()) {
+            res.add(MensajeItem(1, "Dirigencia CONATACOCH", "Bienvenido a ColectiGo. Canal activo.", "19-10-2026 10:00"))
+        }
+        return res
+    }
 
     fun enviarMensaje(canal: String, emisor: String, contenido: String) {
-        writableDatabase.execSQL(
-            "INSERT INTO mensajes(canal,emisor,contenido,fecha) VALUES (?,?,?,datetime('now','localtime'))",
-            arrayOf<Any>(canal, emisor, contenido)
-        )
+        val db = writableDatabase
+        val fecha = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+        db.execSQL("INSERT INTO mensajes(canal, emisor, contenido, fecha) VALUES (?, ?, ?, ?)", arrayOf(canal, emisor, contenido, fecha))
     }
 }

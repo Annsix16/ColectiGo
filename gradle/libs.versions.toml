@@ -32,6 +32,8 @@ play-services-maps = { group = "com.google.android.gms", name = "play-services-m
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 google-maps-utils = { group = "com.google.maps.android", name = "android-maps-utils", version.ref = "androidMapsUtils" }
 google-maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
+androidx-biometric = { group = "androidx.biometric", name = "biometric-ktx", version = "1.2.0-alpha05" }
+osmdroid-android = { group = "org.osmdroid", name = "osmdroid-android", version = "6.1.20" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

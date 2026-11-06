@@ -59,6 +59,8 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.google.maps.utils)
     implementation(libs.google.maps.compose)
+    implementation(libs.androidx.biometric)
+    implementation(libs.osmdroid.android)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

@@ -53,8 +53,10 @@ import cl.conatacoch.colectigo.data.VehiculoVivo
 import cl.conatacoch.colectigo.ui.theme.Ambar
 import cl.conatacoch.colectigo.ui.theme.Gris
 import cl.conatacoch.colectigo.ui.theme.Tinta
+import cl.conatacoch.colectigo.ui.theme.Verde
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 private val TABS = listOf("Mapa", "Historial", "Mensajes", "Perfil")
 
@@ -78,12 +80,13 @@ fun PasajeroApp(c: AppContainer, onExit: () -> Unit) {
     }
 }
 
-fun etaTexto(v: VehiculoVivo, r: RouteUi, paradaIdx: Int): String {
+fun etaDetallado(v: VehiculoVivo, r: RouteUi, paradaIdx: Int): String {
     if (r.path.total <= 0.0) return "—"
     val rem = r.paradaMeters[paradaIdx] - v.metros
     if (rem < -30) return "Ya pasó por tu paradero"
+    val distTxt = if (rem >= 1000) "${(rem / 100.0).roundToInt() / 10.0} km" else "${rem.roundToInt()} m"
     val min = ceil(rem.coerceAtLeast(0.0) / r.path.total * r.info.totalSeconds / 60.0).toInt()
-    return if (min <= 0) "Llegando a tu paradero" else "Llega en $min min"
+    return if (min <= 0) "Llegando · a $distTxt" else "A $distTxt (llega en $min min)"
 }
 
 @Composable
@@ -102,7 +105,7 @@ fun MapaPasajero(c: AppContainer, snackbar: SnackbarHostState) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
-                Text("Calculando recorrido…", color = Gris, modifier = Modifier.padding(top = 12.dp))
+                Text("Cargando ruta de colectivos…", color = Gris, modifier = Modifier.padding(top = 12.dp), fontSize = 18.sp)
             }
         }
         return
@@ -110,23 +113,20 @@ fun MapaPasajero(c: AppContainer, snackbar: SnackbarHostState) {
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(R.drawable.ic_colectigo), contentDescription = "ColectiGo", modifier = Modifier.size(40.dp))
+            Image(painterResource(R.drawable.ic_colectigo), contentDescription = "ColectiGo", modifier = Modifier.size(44.dp))
             Spacer(Modifier.width(12.dp))
-            Text(marca(), fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(marca(), fontSize = 28.sp, fontWeight = FontWeight.Bold)
         }
         Column(Modifier.padding(horizontal = 20.dp)) {
-            Text("Recorrido", color = Gris, fontSize = 14.sp)
-            Text(r.nombre, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Tinta)
-            if (!r.info.fromApi) {
-                Text("Ruta aproximada (sin Directions API / sin conexión)", color = Gris, fontSize = 12.sp)
-            }
+            Text("Recorrido de Colectivos", color = Gris, fontSize = 15.sp)
+            Text(r.nombre, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Tinta)
         }
         Row(
             Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             r.paradas.forEachIndexed { i, p ->
-                FilterChip(selected = i == paradaSel, onClick = { paradaSel = i }, label = { Text(p.nombre) })
+                FilterChip(selected = i == paradaSel, onClick = { paradaSel = i }, label = { Text(p.nombre, fontSize = 16.sp) })
             }
         }
 
@@ -137,39 +137,40 @@ fun MapaPasajero(c: AppContainer, snackbar: SnackbarHostState) {
             onParadaClick = { paradaSel = it }
         )
 
-        Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = Color.White, shadowElevation = 8.dp) {
+        Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = Color.White, shadowElevation = 10.dp) {
             Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Vehículos en servicio", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("${vehiculos.size} activos", color = Gris)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Colectivos en Ruta", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text("${vehiculos.size} activos", color = Verde, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Spacer(Modifier.height(8.dp))
                 Column(
-                    Modifier.heightIn(max = 230.dp).verticalScroll(rememberScrollState()),
+                    Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     vehiculos.forEachIndexed { i, v ->
-                        VehicleCard(i + 1, v, etaTexto(v, r, paradaSel), selected = vehSel == v.id) { vehSel = v.id }
+                        VehicleCard(i + 1, v, etaDetallado(v, r, paradaSel), selected = vehSel == v.id) { vehSel = v.id }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = {
                         val v = vehiculos.firstOrNull { it.id == vehSel }
+                        val parada = r.paradas.getOrNull(paradaSel)?.nombre ?: "Paradero"
                         scope.launch {
                             when {
-                                v == null -> snackbar.showSnackbar("Elige un vehículo de la lista")
-                                v.asientosLibres == 0 -> snackbar.showSnackbar("Ese vehículo está lleno")
+                                v == null -> snackbar.showSnackbar("Selecciona un colectivo de la lista para solicitar")
+                                v.asientosLibres == 0 -> snackbar.showSnackbar("Este colectivo no tiene asientos disponibles")
                                 else -> {
-                                    c.db.crearViaje(v.id, TARIFA_DEMO)
-                                    snackbar.showSnackbar("Viaje solicitado en ${formatPatente(v.patente)}. Pago pendiente (Rut Pay)")
+                                    c.db.crearReserva("Pasajero Demo", v.id, parada, TARIFA_DEMO)
+                                    snackbar.showSnackbar("🛎️ ¡Solicitud enviada al conductor de ${formatPatente(v.patente)}! Esperando confirmación...")
                                 }
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(60.dp),
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
                     shape = RoundedCornerShape(20.dp)
-                ) { Text("Solicitar viaje", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
+                ) { Text("Solicitar y Reservar Viaje", fontWeight = FontWeight.Bold, fontSize = 20.sp) }
             }
         }
     }
@@ -179,20 +180,20 @@ fun MapaPasajero(c: AppContainer, snackbar: SnackbarHostState) {
 fun HistorialPasajero(c: AppContainer) {
     val viajes = remember { c.db.viajesPasajero() }
     Column(Modifier.fillMaxSize()) {
-        ScreenTitle("Historial")
+        ScreenTitle("Historial de Viajes")
         if (viajes.isEmpty()) {
-            Text("Aún no tienes viajes.", color = Gris, modifier = Modifier.padding(20.dp))
+            Text("Aún no tienes viajes registrados.", color = Gris, modifier = Modifier.padding(20.dp), fontSize = 18.sp)
         }
         LazyColumn(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(viajes) { v ->
                 CardBox {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(formatPatente(v.patente), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text(clp(v.monto), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text(formatPatente(v.patente), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(clp(v.monto), fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Verde)
                     }
-                    Text(v.fecha, color = Gris, fontSize = 14.sp)
-                    Text(v.estado.lowercase().replaceFirstChar { it.uppercase() }, color = Gris, fontSize = 14.sp)
-                    v.estrellas?.let { Text("★".repeat(it) + "☆".repeat(5 - it), color = Ambar, fontSize = 18.sp) }
+                    Text(v.fecha, color = Gris, fontSize = 15.sp)
+                    Text("Estado: ${v.estado.lowercase().replaceFirstChar { it.uppercase() }}", color = Gris, fontSize = 15.sp)
+                    v.estrellas?.let { Text("★".repeat(it) + "☆".repeat(5 - it), color = Ambar, fontSize = 20.sp) }
                 }
             }
         }
@@ -202,18 +203,18 @@ fun HistorialPasajero(c: AppContainer) {
 @Composable
 fun PerfilPasajero(onExit: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        ScreenTitle("Perfil")
-        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        ScreenTitle("Perfil del Pasajero")
+        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             CardBox {
-                Text("Cuenta", color = Gris, fontSize = 14.sp)
-                Text("Modo invitado (sin registro)", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("Cuenta de Usuario", color = Gris, fontSize = 15.sp)
+                Text("Modo Pasajero (Sin registro necesario)", fontWeight = FontWeight.Bold, fontSize = 20.sp)
             }
             CardBox {
-                Text("Medio de pago", color = Gris, fontSize = 14.sp)
-                Text("Rut Pay (ambiente de pruebas)", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("Medio de Pago Configurado", color = Gris, fontSize = 15.sp)
+                Text("Rut Pay / Efectivo (Red de Pruebas)", fontWeight = FontWeight.Bold, fontSize = 20.sp)
             }
-            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(20.dp)) {
-                Text("Cerrar sesión", fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(20.dp)) {
+                Text("Cerrar Sesión", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
         }
     }

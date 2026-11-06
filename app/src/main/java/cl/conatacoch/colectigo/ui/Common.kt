@@ -2,13 +2,13 @@ package cl.conatacoch.colectigo.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -28,9 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,17 +52,6 @@ import cl.conatacoch.colectigo.ui.theme.Tinta
 import cl.conatacoch.colectigo.ui.theme.Verde
 import cl.conatacoch.colectigo.ui.theme.VerdeClaro
 import cl.conatacoch.colectigo.ui.theme.VerdeOscuro
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.Polyline
-import com.google.maps.android.compose.rememberCameraPositionState
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -173,7 +160,7 @@ fun VehicleCard(index: Int, v: VehiculoVivo, eta: String, selected: Boolean, onC
     }
 }
 
-// ───────────── Mapa Principal con Fallback OSM ─────────────
+// ───────────── Mapa Principal OpenStreetMap ─────────────
 @Composable
 fun RouteMap(
     route: RouteUi,
@@ -184,147 +171,74 @@ fun RouteMap(
     followVehiculo: Int? = null,
     onParadaClick: (Int) -> Unit = {}
 ) {
-    var useOsm by remember { mutableStateOf(false) }
-
-    Box(modifier) {
-        if (!useOsm) {
-            val camera = rememberCameraPositionState {
-                position = CameraPosition.fromLatLngZoom(route.paradas.first().pos, 13f)
-            }
-            var loaded by remember { mutableStateOf(false) }
-
-            LaunchedEffect(loaded, route) {
-                if (loaded && route.path.points.isNotEmpty()) {
-                    val b = LatLngBounds.Builder()
-                    route.path.points.forEach { b.include(it) }
-                    camera.move(CameraUpdateFactory.newLatLngBounds(b.build(), 100))
-                }
-            }
-            val seguido = vehiculos.firstOrNull { it.id == followVehiculo && it.real }
-            LaunchedEffect(seguido?.pos) {
-                seguido?.let { camera.animate(CameraUpdateFactory.newLatLng(it.pos)) }
-            }
-
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = camera,
-                properties = MapProperties(isMyLocationEnabled = myLocation),
-                uiSettings = MapUiSettings(
-                    zoomControlsEnabled = true,
-                    myLocationButtonEnabled = myLocation,
-                    scrollGesturesEnabled = true,
-                    zoomGesturesEnabled = true,
-                    rotationGesturesEnabled = true,
-                    tiltGesturesEnabled = true
-                ),
-                onMapLoaded = { loaded = true }
-            ) {
-                Polyline(points = route.path.points, color = Verde, width = 14f)
-                route.paradas.forEachIndexed { i, p ->
-                    key(p.id) {
-                        Marker(
-                            state = remember { MarkerState(p.pos) },
-                            title = p.nombre,
-                            icon = BitmapDescriptorFactory.defaultMarker(
-                                if (i == selectedParada) BitmapDescriptorFactory.HUE_AZURE else BitmapDescriptorFactory.HUE_GREEN
-                            ),
-                            onClick = { onParadaClick(i); false }
-                        )
-                    }
-                }
-                vehiculos.forEach { v ->
-                    key(v.id) {
-                        val st = remember { MarkerState(v.pos) }
-                        SideEffect { st.position = v.pos }
-                        Marker(
-                            state = st,
-                            title = formatPatente(v.patente),
-                            snippet = if (v.real) "GPS en vivo · ${asientosTexto(v.asientosLibres)}" else asientosTexto(v.asientosLibres),
-                            icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE),
-                            zIndex = 1f
-                        )
-                    }
-                }
-            }
-        } else {
-            OsmRouteMap(
-                route = route,
-                vehiculos = vehiculos,
-                modifier = Modifier.fillMaxSize(),
-                selectedParada = selectedParada,
-                onParadaClick = onParadaClick
-            )
-        }
-
-        // Botón para alternar a OpenStreetMap si la clave de Google Maps no carga mapa raster
-        Box(
-            Modifier.align(Alignment.TopEnd).padding(8.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.White.copy(alpha = 0.9f))
-                .clickable { useOsm = !useOsm }
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text(
-                if (useOsm) "Usar Google Maps" else "Usar Mapa OSM (Libre)",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Tinta
-            )
-        }
-    }
-}
-
-@Composable
-fun OsmRouteMap(
-    route: RouteUi,
-    vehiculos: List<VehiculoVivo>,
-    modifier: Modifier = Modifier,
-    selectedParada: Int? = null,
-    onParadaClick: (Int) -> Unit = {}
-) {
     val ctx = LocalContext.current
     val mapView = remember {
         Configuration.getInstance().userAgentValue = ctx.packageName
         MapView(ctx).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
-            controller.setZoom(14.0)
+            setBuiltInZoomControls(false)
+            controller.setZoom(14.5)
             if (route.paradas.isNotEmpty()) {
                 val p = route.paradas.first().pos
                 controller.setCenter(GeoPoint(p.latitude, p.longitude))
             }
+            setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    val seguido = vehiculos.firstOrNull { it.id == followVehiculo && it.real }
+    LaunchedEffect(seguido?.pos) {
+        seguido?.let {
+            mapView.controller.animateTo(GeoPoint(it.pos.latitude, it.pos.longitude))
         }
     }
 
     AndroidView(
         factory = { mapView },
-        modifier = modifier,
+        modifier = modifier.fillMaxSize(),
         update = { map ->
             map.overlays.clear()
+
+            // Dibujar ruta
             val line = OsmPolyline().apply {
                 outlinePaint.color = android.graphics.Color.parseColor("#0F9D58")
-                outlinePaint.strokeWidth = 12f
+                outlinePaint.strokeWidth = 14f
                 setPoints(route.path.points.map { GeoPoint(it.latitude, it.longitude) })
             }
             map.overlays.add(line)
 
+            // Dibujar paradas
             route.paradas.forEachIndexed { i, p ->
                 val m = OsmMarker(map).apply {
                     position = GeoPoint(p.pos.latitude, p.pos.longitude)
                     title = p.nombre
+                    snippet = "Paradero ${i + 1}"
                     setOnMarkerClickListener { _, _ ->
                         onParadaClick(i)
+                        showInfoWindow()
                         true
                     }
                 }
                 map.overlays.add(m)
             }
 
+            // Dibujar colectivos en servicio
             vehiculos.forEach { v ->
                 val vm = OsmMarker(map).apply {
                     position = GeoPoint(v.pos.latitude, v.pos.longitude)
-                    title = formatPatente(v.patente)
-                    snippet = asientosTexto(v.asientosLibres)
+                    title = "Colectivo ${formatPatente(v.patente)}"
+                    snippet = if (v.real) "GPS en vivo · ${asientosTexto(v.asientosLibres)}" else asientosTexto(v.asientosLibres)
                 }
                 map.overlays.add(vm)
             }

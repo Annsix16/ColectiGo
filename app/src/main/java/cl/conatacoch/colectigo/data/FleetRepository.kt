@@ -79,11 +79,12 @@ class FleetRepository(
     private val reservationRepo = ReservationRepository()
 
     init {
-        base.forEach { 
-            asientos[it.id] = it.asientos 
-            // Escuchar cambios de asientos en tiempo real desde Firebase Firestore
-            reservationRepo.observeVehicleSeats(it.id) { cloudSeats ->
-                asientos[it.id] = cloudSeats
+        base.forEach { v ->
+            asientos[v.id] = v.asientos 
+            // Inicializar en Firestore con el valor base y escuchar cambios en tiempo real
+            reservationRepo.updateVehicleSeats(v.id, v.asientos) { _ -> }
+            reservationRepo.observeVehicleSeats(v.id) { cloudSeats ->
+                asientos[v.id] = cloudSeats
                 emitir()
             }
         }

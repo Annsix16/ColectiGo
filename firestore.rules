@@ -1,0 +1,62 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function demoActive() {
+      return request.time < timestamp.date(2026, 11, 13);
+    }
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function demoMobile() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function adminUser() {
+      return signedIn()
+        && request.auth.token.email == 'REEMPLAZAR_POR_CORREO_ADMIN';
+    }
+
+    match /reservas/{reservationId} {
+      allow read: if demoActive() && (demoMobile() || adminUser());
+
+      allow create: if demoActive()
+        && demoMobile()
+        && request.resource.data.keys().hasOnly([
+          'passengerName', 'passengerUid', 'driverName', 'vehicleId',
+          'patente', 'origin', 'destination', 'paradaNombre', 'monto',
+          'estado', 'fecha', 'createdAt'
+        ])
+        && request.resource.data.passengerName is string
+        && request.resource.data.passengerUid == request.auth.uid
+        && request.resource.data.driverName is string
+        && request.resource.data.vehicleId is int
+        && request.resource.data.patente is string
+        && request.resource.data.origin is string
+        && request.resource.data.destination is string
+        && request.resource.data.paradaNombre is string
+        && request.resource.data.monto is int
+        && request.resource.data.estado == 'PENDIENTE'
+        && request.resource.data.fecha is string
+        && request.resource.data.createdAt is string;
+
+      allow update: if demoActive()
+        && (
+          adminUser()
+          || (
+            demoMobile()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado'])
+            && request.resource.data.estado in [
+              'PENDIENTE', 'ACEPTADA', 'RECHAZADA',
+              'EN_CURSO', 'COMPLETADA', 'CANCELADA'
+            ]
+          )
+        );
+
+      allow delete: if demoActive() && adminUser();
+    }
+  }
+}

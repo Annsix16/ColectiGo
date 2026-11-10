@@ -81,8 +81,9 @@ fun PasajeroApp(c: AppContainer, onExit: () -> Unit) {
 }
 
 fun etaDetallado(v: VehiculoVivo, r: RouteUi, paradaIdx: Int): String {
-    if (r.path.total <= 0.0) return "—"
-    val rem = r.paradaMeters[paradaIdx] - v.metros
+    if (r.path.total <= 0.0 || r.paradaMeters.isEmpty()) return "—"
+    val safeIdx = paradaIdx.coerceIn(0, r.paradaMeters.size - 1)
+    val rem = r.paradaMeters[safeIdx] - v.metros
     if (rem < -30) return "Ya pasó por tu paradero"
     val distTxt = if (rem >= 1000) "${(rem / 100.0).roundToInt() / 10.0} km" else "${rem.roundToInt()} m"
     val min = ceil(rem.coerceAtLeast(0.0) / r.path.total * r.info.totalSeconds / 60.0).toInt()
@@ -95,7 +96,7 @@ fun MapaPasajero(c: AppContainer, snackbar: SnackbarHostState) {
     val vehiculos by c.fleet.vehiculos.collectAsState()
     val perm = rememberLocationPermission()
     val scope = rememberCoroutineScope()
-    var paradaSel by remember { mutableIntStateOf(2) }
+    var paradaSel by remember { mutableIntStateOf(0) }
     var vehSel by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) { if (!perm.granted) perm.request() }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "399959832852",
+    "project_id": "colectigo-6ad5c",
+    "storage_bucket": "colectigo-6ad5c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:399959832852:android:24e61c2eab700a1614ea01",
+        "android_client_info": {
+          "package_name": "cl.conatacoch.colectigo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAfRDIjFboJPlhhc1g1MFRm-omp0DVGh6c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

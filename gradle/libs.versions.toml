@@ -12,6 +12,8 @@ playServicesMaps = "19.0.0"
 playServicesLocation = "21.3.0"
 androidMapsUtils = "3.9.0"
 mapsCompose = "6.4.1"
+googleGmsGoogleServices = "4.5.0"
+firebaseAi = "18.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -34,8 +36,10 @@ google-maps-utils = { group = "com.google.maps.android", name = "android-maps-ut
 google-maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric-ktx", version = "1.2.0-alpha05" }
 osmdroid-android = { group = "org.osmdroid", name = "osmdroid-android", version = "6.1.20" }
+firebase-ai = { group = "com.google.firebase", name = "firebase-ai", version.ref = "firebaseAi" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-
+google-gms-google-services = { id = "com.google.gms.google-services", version.ref = "googleGmsGoogleServices" }

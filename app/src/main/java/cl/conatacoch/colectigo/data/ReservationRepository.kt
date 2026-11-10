@@ -166,7 +166,15 @@ class ReservationRepository(
                 "createdAt" to now
             )
             reservations.add(data)
-                .addOnSuccessListener { onComplete(null) }
+                .addOnSuccessListener { 
+                    val vehicleRef = firestore.collection("vehiculos").document(vehicleId.toString())
+                    vehicleRef.get().addOnSuccessListener { doc ->
+                        val current = doc.getLong("asientosLibres")?.toInt() ?: 3
+                        val updated = (current - 1).coerceAtLeast(0)
+                        vehicleRef.set(mapOf("asientosLibres" to updated), SetOptions.merge())
+                    }
+                    onComplete(null) 
+                }
                 .addOnFailureListener { onComplete(it) }
         }
     }

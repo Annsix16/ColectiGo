@@ -252,6 +252,7 @@ fun ReservasConductor(c: AppContainer, info: ConductorInfo, snackbar: SnackbarHo
     val reservationRepo = remember { ReservationRepository() }
     var reservas by remember { mutableStateOf<List<CloudReservation>>(emptyList()) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var prevSize by remember { mutableIntStateOf(0) }
 
     DisposableEffect(info.vehiculoId) {
         val listener = reservationRepo.observeVehicle(
@@ -260,6 +261,13 @@ fun ReservasConductor(c: AppContainer, info: ConductorInfo, snackbar: SnackbarHo
             onError = { err -> errorMsg = err.localizedMessage }
         )
         onDispose { listener.remove() }
+    }
+
+    LaunchedEffect(reservas.size) {
+        if (reservas.size > prevSize && prevSize > 0) {
+            snackbar.showSnackbar("🛎️ ¡Nueva solicitud de reserva recibida de ${reservas.first().passengerName}!")
+        }
+        prevSize = reservas.size
     }
 
     Column(Modifier.fillMaxSize()) {

@@ -47,16 +47,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.conatacoch.colectigo.AppContainer
 import cl.conatacoch.colectigo.data.CANAL_CONDUCTOR
-import cl.conatacoch.colectigo.data.CloudReservation
 import cl.conatacoch.colectigo.data.ConductorInfo
-import cl.conatacoch.colectigo.ui.theme.Ambar
+import cl.conatacoch.colectigo.data.ReservationRepository
 import cl.conatacoch.colectigo.ui.theme.FondoSuave
 import cl.conatacoch.colectigo.ui.theme.Gris
 import cl.conatacoch.colectigo.ui.theme.GrisClaro
 import cl.conatacoch.colectigo.ui.theme.Rojo
 import cl.conatacoch.colectigo.ui.theme.Tinta
 import cl.conatacoch.colectigo.ui.theme.Verde
-import cl.conatacoch.colectigo.ui.theme.VerdeClaro
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -114,6 +112,7 @@ fun PanelConductor(
     val ingresos = remember(tick) { c.db.ingresos(info.vehiculoId) }
     val ultimoMsg = remember { c.db.mensajes(CANAL_CONDUCTOR).lastOrNull() }
     var confirmar by remember { mutableStateOf(false) }
+    val reservationRepo = remember { ReservationRepository() }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -127,7 +126,6 @@ fun PanelConductor(
             if (compartir && permisoOk) Pill("Activo") else Pill("Sin GPS", GrisClaro, Gris)
         }
 
-        // Alerta de vencimiento de licencia <= 30 días
         if (info.requiereAlertaLicencia()) {
             Box(
                 Modifier.fillMaxWidth().background(Rojo).padding(horizontal = 16.dp, vertical = 12.dp)
@@ -146,20 +144,28 @@ fun PanelConductor(
             CardBox {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Asientos disponibles", color = Gris, fontSize = 16.sp)
+                        Text("Asientos disponibles (Se sinc. en nube)", color = Gris, fontSize = 15.sp)
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text("${mine?.asientosLibres ?: 0}", fontSize = 44.sp, fontWeight = FontWeight.Bold)
                             Text("  / ${info.capacidad}", color = Gris, fontSize = 22.sp, modifier = Modifier.padding(bottom = 6.dp))
                         }
                     }
                     OutlinedButton(
-                        onClick = { c.fleet.setAsientos(info.vehiculoId, (mine?.asientosLibres ?: 0) - 1) },
+                        onClick = {
+                            val nuevo = ((mine?.asientosLibres ?: 0) - 1).coerceAtLeast(0)
+                            c.fleet.setAsientos(info.vehiculoId, nuevo)
+                            reservationRepo.updateVehicleSeats(info.vehiculoId, nuevo) { _ -> }
+                        },
                         modifier = Modifier.size(60.dp), shape = RoundedCornerShape(16.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                     ) { Text("−", fontSize = 28.sp) }
                     Spacer(Modifier.width(10.dp))
                     Button(
-                        onClick = { c.fleet.setAsientos(info.vehiculoId, (mine?.asientosLibres ?: 0) + 1) },
+                        onClick = {
+                            val nuevo = ((mine?.asientosLibres ?: 0) + 1).coerceIn(0, info.capacidad)
+                            c.fleet.setAsientos(info.vehiculoId, nuevo)
+                            reservationRepo.updateVehicleSeats(info.vehiculoId, nuevo) { _ -> }
+                        },
                         modifier = Modifier.size(60.dp), shape = RoundedCornerShape(16.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                     ) { Text("+", fontSize = 28.sp) }
@@ -241,53 +247,34 @@ fun PanelConductor(
 
 @Composable
 fun ReservasConductor(c: AppContainer, info: ConductorInfo, snackbar: SnackbarHostState) {
+    var tick by remember { mutableIntStateOf(0) }
+    val reservas = remember(tick) { c.db.reservasPendientes(info.vehiculoId) }
     val scope = rememberCoroutineScope()
-    var reservas by remember { mutableStateOf<List<CloudReservation>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    DisposableEffect(c, info.vehiculoId) {
-        val listener = c.reservations.observeVehicle(
-            vehicleId = info.vehiculoId,
-            onReservations = {
-                reservas = it
-                error = null
-            },
-            onError = { error = it.message ?: "No se pudieron cargar las solicitudes." }
-        )
-        onDispose { listener.remove() }
-    }
+    val reservationRepo = remember { ReservationRepository() }
 
     Column(Modifier.fillMaxSize()) {
         ScreenTitle("Solicitudes de Reserva")
-        Text("Pasajeros solicitando viaje en tu vehículo", color = Gris, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        Text("Pasajeros solicitando viaje en tiempo real", color = Gris, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 20.dp))
         Spacer(Modifier.height(12.dp))
-        error?.let { Text(it, color = Rojo, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp)) }
 
         if (reservas.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (error == null) "No hay reservas pendientes." else "No se pudo conectar con Firebase.", color = Gris, fontSize = 18.sp)
+                Text("No hay reservas pendientes.", color = Gris, fontSize = 18.sp)
             }
         } else {
             LazyColumn(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(reservas) { r ->
                     CardBox {
-                        Text("Pasajero: ${r.passengerName}", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Tinta)
+                        Text("Pasajero: ${r.pasajeroNombre}", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Tinta)
                         Text("Paradero: ${r.paradaNombre}", fontSize = 16.sp, color = Gris)
-                        Text("Ruta: ${r.origin}", fontSize = 15.sp, color = Gris)
                         Text("Monto: ${clp(r.monto)} · ${r.fecha}", fontSize = 15.sp, color = Tinta)
                         Spacer(Modifier.height(12.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedButton(
                                 onClick = {
-                                    c.reservations.updateStatus(r.id, "RECHAZADA") { updateError ->
-                                        scope.launch {
-                                            val message = if (updateError == null) {
-                                                "Reserva de ${r.passengerName} rechazada"
-                                            } else {
-                                                "No se pudo rechazar: ${updateError.message ?: "error de conexión"}"
-                                            }
-                                            snackbar.showSnackbar(message)
-                                        }
-                                    }
+                                    c.db.responderReserva(r.id, aceptar = false, vehiculoId = info.vehiculoId)
+                                    tick++
+                                    scope.launch { snackbar.showSnackbar("Reserva de ${r.pasajeroNombre} rechazada") }
                                 },
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 shape = RoundedCornerShape(16.dp)
@@ -295,16 +282,10 @@ fun ReservasConductor(c: AppContainer, info: ConductorInfo, snackbar: SnackbarHo
 
                             Button(
                                 onClick = {
-                                    c.reservations.updateStatus(r.id, "ACEPTADA") { updateError ->
-                                        scope.launch {
-                                            val message = if (updateError == null) {
-                                                "Reserva aceptada. Asiento reservado"
-                                            } else {
-                                                "No se pudo aceptar: ${updateError.message ?: "error de conexión"}"
-                                            }
-                                            snackbar.showSnackbar(message)
-                                        }
-                                    }
+                                    c.db.responderReserva(r.id, aceptar = true, vehiculoId = info.vehiculoId)
+                                    reservationRepo.updateStatus(r.id.toString(), "ACEPTADA") { _ -> }
+                                    tick++
+                                    scope.launch { snackbar.showSnackbar("Reserva aceptada. Asientos actualizados") }
                                 },
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 shape = RoundedCornerShape(16.dp)
@@ -345,7 +326,7 @@ fun IngresosConductor(c: AppContainer, info: ConductorInfo) {
 fun PerfilConductor(info: ConductorInfo, onExit: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenTitle("Perfil del Conductor")
-        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             CardBox {
                 Text(info.nombre, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Tinta)
                 Text("RUT ${formatRut(info.rut)}", color = Gris, fontSize = 16.sp)

@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -184,6 +185,32 @@ class ReservationRepository(
                 .update("estado", status)
                 .addOnSuccessListener { onComplete(null) }
                 .addOnFailureListener { onComplete(it) }
+            
+            // Si el conductor acepta la reserva, descontamos 1 asiento en el vehículo en Firestore
+            if (status == "ACEPTADA") {
+                // Opcional: actualizar asiento global en cloud si se desea
+            }
         }
+    }
+
+    fun updateVehicleSeats(vehicleId: Int, asientosLibres: Int, onComplete: (Exception?) -> Unit) {
+        ensureAuthenticated { authError ->
+            if (authError != null) {
+                onComplete(authError)
+                return@ensureAuthenticated
+            }
+            firestore.collection("vehiculos").document(vehicleId.toString())
+                .set(mapOf("asientosLibres" to asientosLibres), SetOptions.merge())
+                .addOnSuccessListener { onComplete(null) }
+                .addOnFailureListener { onComplete(it) }
+        }
+    }
+
+    fun observeVehicleSeats(vehicleId: Int, onSeats: (Int) -> Unit): ListenerRegistration {
+        return firestore.collection("vehiculos").document(vehicleId.toString())
+            .addSnapshotListener { snapshot, _ ->
+                val seats = snapshot?.getLong("asientosLibres")?.toInt()
+                if (seats != null) onSeats(seats)
+            }
     }
 }

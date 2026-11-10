@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import cl.conatacoch.colectigo.AppContainer
 import cl.conatacoch.colectigo.R
 import cl.conatacoch.colectigo.data.CANAL_PASAJERO
+import cl.conatacoch.colectigo.data.ReservationRepository
 import cl.conatacoch.colectigo.data.RouteUi
 import cl.conatacoch.colectigo.data.TARIFA_DEMO
 import cl.conatacoch.colectigo.data.VehiculoVivo
@@ -164,7 +165,23 @@ fun MapaPasajero(c: AppContainer, snackbar: SnackbarHostState) {
                                 v.asientosLibres == 0 -> snackbar.showSnackbar("Este colectivo no tiene asientos disponibles")
                                 else -> {
                                     c.db.crearReserva("Pasajero Demo", v.id, parada, TARIFA_DEMO)
-                                    snackbar.showSnackbar("🛎️ ¡Solicitud enviada al conductor de ${formatPatente(v.patente)}! Esperando confirmación...")
+                                    ReservationRepository().create(
+                                        passengerName = "Pasajero Demo",
+                                        driverName = "Conductor ${formatPatente(v.patente)}",
+                                        vehicleId = v.id,
+                                        patente = v.patente,
+                                        origin = r.nombre,
+                                        paradaNombre = parada,
+                                        monto = TARIFA_DEMO
+                                    ) { err ->
+                                        scope.launch {
+                                            if (err == null) {
+                                                snackbar.showSnackbar("🛎️ ¡Solicitud enviada a Firebase en tiempo real a ${formatPatente(v.patente)}!")
+                                            } else {
+                                                snackbar.showSnackbar("Solicitud creada (Modo local)")
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

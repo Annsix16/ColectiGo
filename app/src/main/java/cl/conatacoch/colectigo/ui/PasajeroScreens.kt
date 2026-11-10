@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.conatacoch.colectigo.AppContainer
 import cl.conatacoch.colectigo.R
-import cl.conatacoch.colectigo.data.CANAL_PASAJERO
 import cl.conatacoch.colectigo.data.ReservationRepository
 import cl.conatacoch.colectigo.data.RouteUi
 import cl.conatacoch.colectigo.data.TARIFA_DEMO
@@ -74,7 +73,7 @@ fun PasajeroApp(c: AppContainer, onExit: () -> Unit) {
             when (tab) {
                 0 -> MapaPasajero(c, snackbar)
                 1 -> HistorialPasajero(c)
-                2 -> MensajesScreen(c.db, CANAL_PASAJERO, "Pasajero")
+                2 -> MensajesScreen(c, "PASAJERO", "Pasajero")
                 else -> PerfilPasajero(onExit)
             }
         }

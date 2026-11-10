@@ -91,7 +91,7 @@ fun ConductorApp(c: AppContainer, info: ConductorInfo, onExit: () -> Unit) {
                 }
                 1 -> ReservasConductor(c, info, snackbar)
                 2 -> IngresosConductor(c, info)
-                3 -> MensajesScreen(c.db, CANAL_CONDUCTOR, info.nombre)
+                3 -> MensajesScreen(c, "CONDUCTOR", info.nombre)
                 else -> PerfilConductor(info, onExit)
             }
         }

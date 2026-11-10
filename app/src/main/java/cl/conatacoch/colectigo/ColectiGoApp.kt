@@ -7,6 +7,7 @@ import com.google.firebase.FirebaseApp
 import cl.conatacoch.colectigo.data.ColectiDb
 import cl.conatacoch.colectigo.data.DirectionsRepository
 import cl.conatacoch.colectigo.data.FleetRepository
+import cl.conatacoch.colectigo.data.MessageRepository
 import cl.conatacoch.colectigo.data.ReservationRepository
 import cl.conatacoch.colectigo.location.LocationTracker
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +22,7 @@ class AppContainer(context: Context) {
     val location = LocationTracker(context)
     val fleet = FleetRepository(db, directions, scope)
     val reservations = ReservationRepository()
+    val messages = MessageRepository()
 }
 
 class ColectiGoApp : Application() {

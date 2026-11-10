@@ -17,7 +17,7 @@ service cloud.firestore {
 
     function adminUser() {
       return signedIn()
-        && request.auth.token.email == 'REEMPLAZAR_POR_CORREO_ADMIN';
+        && request.auth.token.email == 'admin@admin123.cl';
     }
 
     match /reservas/{reservationId} {
@@ -61,6 +61,59 @@ service cloud.firestore {
 
     match /vehiculos/{vehicleId} {
       allow read, write: if demoActive() && (demoMobile() || adminUser());
+    }
+
+    match /mensajes/{messageId} {
+      allow read: if demoActive()
+        && (
+          adminUser()
+          || (
+            demoMobile()
+            && (
+              resource.data.audience in ['CONDUCTOR', 'PASAJERO', 'TODOS']
+              || resource.data.senderUid == request.auth.uid
+            )
+          )
+        );
+
+      allow create: if demoActive()
+        && (
+          (
+            adminUser()
+            && request.resource.data.keys().hasOnly([
+              'audience', 'content', 'senderName', 'senderRole',
+              'senderUid', 'createdAt'
+            ])
+            && request.resource.data.audience in ['CONDUCTOR', 'PASAJERO', 'TODOS']
+            && request.resource.data.senderRole == 'ADMIN'
+            && request.resource.data.senderUid == request.auth.uid
+            && request.resource.data.senderName is string
+            && request.resource.data.content is string
+            && request.resource.data.content.size() > 0
+            && request.resource.data.content.size() <= 500
+            && (
+              request.resource.data.createdAt is string
+              || request.resource.data.createdAt is timestamp
+            )
+          )
+          || (
+            demoMobile()
+            && request.resource.data.keys().hasOnly([
+              'audience', 'content', 'senderName', 'senderRole',
+              'senderUid', 'createdAt'
+            ])
+            && request.resource.data.audience == 'ADMIN'
+            && request.resource.data.senderRole in ['CONDUCTOR', 'PASAJERO']
+            && request.resource.data.senderUid == request.auth.uid
+            && request.resource.data.senderName is string
+            && request.resource.data.content is string
+            && request.resource.data.content.size() > 0
+            && request.resource.data.content.size() <= 500
+            && request.resource.data.createdAt is string
+          )
+        );
+
+      allow update, delete: if demoActive() && adminUser();
     }
   }
 }

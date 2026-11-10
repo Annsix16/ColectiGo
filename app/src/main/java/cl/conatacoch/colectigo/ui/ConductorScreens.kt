@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cl.conatacoch.colectigo.AppContainer
 import cl.conatacoch.colectigo.data.CANAL_CONDUCTOR
+import cl.conatacoch.colectigo.data.CloudReservation
 import cl.conatacoch.colectigo.data.ConductorInfo
 import cl.conatacoch.colectigo.data.ReservationRepository
 import cl.conatacoch.colectigo.ui.theme.FondoSuave
@@ -247,34 +248,50 @@ fun PanelConductor(
 
 @Composable
 fun ReservasConductor(c: AppContainer, info: ConductorInfo, snackbar: SnackbarHostState) {
-    var tick by remember { mutableIntStateOf(0) }
-    val reservas = remember(tick) { c.db.reservasPendientes(info.vehiculoId) }
     val scope = rememberCoroutineScope()
     val reservationRepo = remember { ReservationRepository() }
+    var reservas by remember { mutableStateOf<List<CloudReservation>>(emptyList()) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(info.vehiculoId) {
+        val listener = reservationRepo.observeVehicle(
+            vehicleId = info.vehiculoId,
+            onReservations = { list -> reservas = list },
+            onError = { err -> errorMsg = err.localizedMessage }
+        )
+        onDispose { listener.remove() }
+    }
 
     Column(Modifier.fillMaxSize()) {
         ScreenTitle("Solicitudes de Reserva")
-        Text("Pasajeros solicitando viaje en tiempo real", color = Gris, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        Text("Pasajeros solicitando viaje en tiempo real (Cloud)", color = Gris, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 20.dp))
         Spacer(Modifier.height(12.dp))
+
+        errorMsg?.let {
+            Text("Error de red Firebase: $it", color = Rojo, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        }
 
         if (reservas.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No hay reservas pendientes.", color = Gris, fontSize = 18.sp)
+                Text("No hay reservas pendientes en la nube.", color = Gris, fontSize = 18.sp)
             }
         } else {
             LazyColumn(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(reservas) { r ->
+                items(reservas, key = { it.id }) { r ->
                     CardBox {
-                        Text("Pasajero: ${r.pasajeroNombre}", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Tinta)
+                        Text("Pasajero: ${r.passengerName}", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Tinta)
                         Text("Paradero: ${r.paradaNombre}", fontSize = 16.sp, color = Gris)
                         Text("Monto: ${clp(r.monto)} · ${r.fecha}", fontSize = 15.sp, color = Tinta)
                         Spacer(Modifier.height(12.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedButton(
                                 onClick = {
-                                    c.db.responderReserva(r.id, aceptar = false, vehiculoId = info.vehiculoId)
-                                    tick++
-                                    scope.launch { snackbar.showSnackbar("Reserva de ${r.pasajeroNombre} rechazada") }
+                                    reservationRepo.updateStatus(r.id, "RECHAZADA") { err ->
+                                        scope.launch {
+                                            if (err == null) snackbar.showSnackbar("Reserva rechazada")
+                                            else snackbar.showSnackbar("Error: ${err.localizedMessage}")
+                                        }
+                                    }
                                 },
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 shape = RoundedCornerShape(16.dp)
@@ -282,10 +299,15 @@ fun ReservasConductor(c: AppContainer, info: ConductorInfo, snackbar: SnackbarHo
 
                             Button(
                                 onClick = {
-                                    c.db.responderReserva(r.id, aceptar = true, vehiculoId = info.vehiculoId)
-                                    reservationRepo.updateStatus(r.id.toString(), "ACEPTADA") { _ -> }
-                                    tick++
-                                    scope.launch { snackbar.showSnackbar("Reserva aceptada. Asientos actualizados") }
+                                    reservationRepo.updateStatus(r.id, "ACEPTADA") { err ->
+                                        scope.launch {
+                                            if (err == null) {
+                                                snackbar.showSnackbar("Reserva aceptada. Asientos actualizados")
+                                            } else {
+                                                snackbar.showSnackbar("Error: ${err.localizedMessage}")
+                                            }
+                                        }
+                                    }
                                 },
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 shape = RoundedCornerShape(16.dp)

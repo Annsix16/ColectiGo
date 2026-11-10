@@ -33,12 +33,12 @@ service cloud.firestore {
         && request.resource.data.passengerName is string
         && request.resource.data.passengerUid == request.auth.uid
         && request.resource.data.driverName is string
-        && request.resource.data.vehicleId is int
+        && request.resource.data.vehicleId is number
         && request.resource.data.patente is string
         && request.resource.data.origin is string
         && request.resource.data.destination is string
         && request.resource.data.paradaNombre is string
-        && request.resource.data.monto is int
+        && request.resource.data.monto is number
         && request.resource.data.estado == 'PENDIENTE'
         && request.resource.data.fecha is string
         && request.resource.data.createdAt is string;

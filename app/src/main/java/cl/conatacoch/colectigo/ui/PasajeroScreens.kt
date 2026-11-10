@@ -178,7 +178,7 @@ fun MapaPasajero(c: AppContainer, snackbar: SnackbarHostState) {
                                             if (err == null) {
                                                 snackbar.showSnackbar("🛎️ ¡Solicitud enviada a Firebase en tiempo real a ${formatPatente(v.patente)}!")
                                             } else {
-                                                snackbar.showSnackbar("Solicitud creada (Modo local)")
+                                                snackbar.showSnackbar("Error Firebase: ${err.localizedMessage}")
                                             }
                                         }
                                     }
@@ -229,7 +229,7 @@ fun PerfilPasajero(onExit: () -> Unit) {
             }
             CardBox {
                 Text("Medio de Pago Configurado", color = Gris, fontSize = 15.sp)
-                Text("Rut Pay / Efectivo (Red de Pruebas)", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Rut Pay / efectivo (Red de Pruebas)", fontWeight = FontWeight.Bold, fontSize = 20.sp)
             }
             OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(20.dp)) {
                 Text("Cerrar Sesión", fontWeight = FontWeight.Bold, fontSize = 18.sp)

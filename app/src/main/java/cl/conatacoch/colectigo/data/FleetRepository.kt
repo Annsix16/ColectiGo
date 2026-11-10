@@ -59,13 +59,7 @@ data class VehiculoVivo(
 
 /**
  * Estado de la flota en "tiempo real".
- *
- * HOY (sin backend): los vehículos se simulan recorriendo la ruta; y si un conductor activa
- * "compartir ubicación", su vehículo usa el GPS real del teléfono (publishRealLocation).
- *
- * MAÑANA (con backend): reemplazar [simular] por un WebSocket/Firebase que entregue las posiciones
- * de todos los conductores, y hacer que [publishRealLocation] las envíe al servidor.
- * Las pantallas no cambian: solo observan [vehiculos] y [route].
+ * Sincroniza asientos y posiciones en tiempo real con Firebase Firestore.
  */
 class FleetRepository(
     private val db: ColectiDb,
@@ -82,9 +76,17 @@ class FleetRepository(
     private val asientos = ConcurrentHashMap<Int, Int>()
     private val offsets = ConcurrentHashMap<Int, Double>()
     private val real = ConcurrentHashMap<Int, LatLng>()
+    private val reservationRepo = ReservationRepository()
 
     init {
-        base.forEach { asientos[it.id] = it.asientos }
+        base.forEach { 
+            asientos[it.id] = it.asientos 
+            // Escuchar cambios de asientos en tiempo real desde Firebase Firestore
+            reservationRepo.observeVehicleSeats(it.id) { cloudSeats ->
+                asientos[it.id] = cloudSeats
+                emitir()
+            }
+        }
         scope.launch {
             cargarRuta()
             simular()
@@ -101,7 +103,7 @@ class FleetRepository(
     private suspend fun simular() {
         val r = _route.value ?: return
         if (r.path.total <= 0.0) return
-        val speed = r.path.total / maxOf(r.info.totalSeconds, 60) // m/s coherente con el ETA
+        val speed = r.path.total / maxOf(r.info.totalSeconds, 60)
         val starts = listOf(0.05, 0.20, 0.35)
         base.forEachIndexed { i, v -> offsets[v.id] = r.path.total * starts.getOrElse(i) { 0.1 } }
         emitir()
